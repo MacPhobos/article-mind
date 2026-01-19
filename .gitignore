@@ -1,2 +1,4 @@
 # MCP Vector Search index directory
 .mcp-vector-search/
+article-mind-ui/
+article-mind-service/

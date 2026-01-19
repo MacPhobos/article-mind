@@ -1,3 +1,10 @@
+# Project Overview
+
+This project is a monorepo containing article-mind-service and article-mind-ui.
+article-mind-service is a separate repo cloned into the article-mind-service/ directory.
+article-mind-ui is a separate repo cloned into the article-mind-ui/ directory.
+The purpose of this monorepo is to facilitate coordinated development of both the service and UI components of the Article Mind application.
+
 # Project Memory Configuration
 
 This project uses KuzuMemory for intelligent context management.
