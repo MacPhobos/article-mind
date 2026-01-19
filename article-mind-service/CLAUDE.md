@@ -739,6 +739,197 @@ async def get_users():
 - Frontend can migrate gradually
 - OpenAPI spec clearly shows version
 
+## Health Check API
+
+### Overview
+
+The `/health` endpoint is the **first implemented API endpoint** and serves as the reference implementation for API contract patterns in this service.
+
+**Endpoint:** `GET /health` (no `/api/v1` prefix as per API contract)
+
+**Purpose:**
+- Monitor service availability
+- Check database connectivity
+- Provide version information
+- Enable load balancer health checks
+
+### API Contract
+
+The health check follows the frozen API contract in `docs/api-contract.md`.
+
+**Response Schema:**
+
+```typescript
+interface HealthResponse {
+  status: "ok" | "degraded" | "error";
+  version: string;
+  database: "connected" | "disconnected";
+}
+```
+
+**Response Examples:**
+
+Healthy system:
+```json
+{
+  "status": "ok",
+  "version": "0.1.0",
+  "database": "connected"
+}
+```
+
+Degraded system (database down):
+```json
+{
+  "status": "degraded",
+  "version": "0.1.0",
+  "database": "disconnected"
+}
+```
+
+### Implementation Pattern
+
+The health check demonstrates the **standard API endpoint pattern** used throughout this service:
+
+1. **Pydantic Schema** (`schemas/health.py`):
+   - Define response structure with Literal types for enums
+   - Include docstrings explaining design decisions
+   - Add OpenAPI examples in `model_config`
+
+2. **FastAPI Router** (`routers/health.py`):
+   - Use `response_model` decorator for type-safe OpenAPI generation
+   - Include detailed endpoint documentation
+   - Implement graceful error handling
+   - Document trade-offs and design decisions
+
+3. **Router Registration** (`main.py`):
+   - Include router in FastAPI app
+   - No prefix for health endpoint (exception to versioning rule)
+
+4. **Comprehensive Tests** (`tests/test_main.py`, `tests/unit/test_health.py`):
+   - Test response structure and schema validation
+   - Test database connectivity scenarios (connected/disconnected)
+   - Test OpenAPI spec generation
+   - Mock database failures to test degraded state
+   - Performance tests (<1 second response time)
+
+### Design Decisions
+
+#### Decision 1: Graceful Degradation
+
+**Rationale:** Health checks should ALWAYS respond (even if DB is down) to distinguish between "service dead" vs "service alive but degraded".
+
+**Implementation:**
+- Catches database exceptions instead of propagating
+- Returns HTTP 200 with `status: "degraded"` when DB is down
+- Allows monitoring systems to make smarter decisions
+
+**Trade-offs:**
+- ✅ Better observability (can distinguish partial vs total failure)
+- ✅ Enables smarter load balancing
+- ❌ HTTP 200 even when degraded (status field indicates state)
+
+#### Decision 2: Literal Types for Enums
+
+**Rationale:** Literal types provide compile-time type safety and better IDE autocomplete compared to string constants or Enum classes.
+
+**Implementation:**
+```python
+status: Literal["ok", "degraded", "error"]
+database: Literal["connected", "disconnected"]
+```
+
+**Trade-offs:**
+- ✅ Type safety: Catches typos at type-check time
+- ✅ OpenAPI: Auto-generates enum constraints in spec
+- ✅ Simplicity: No need for separate Enum classes
+- ❌ Less explicit than Enum (no centralized definition)
+
+#### Decision 3: No /api/v1 Prefix
+
+**Rationale:** Health checks are infrastructure endpoints, not part of the versioned API.
+
+**Implementation:**
+- Registered directly on app without prefix
+- Documented as exception in API contract
+
+**Trade-offs:**
+- ✅ Standard practice for health checks
+- ✅ Stable endpoint for monitoring tools
+- ❌ Inconsistent with other API endpoints
+
+### Testing Strategy
+
+**Test Coverage:** 16 tests across 2 test files
+
+**Test Categories:**
+1. **Smoke Tests:** Endpoint exists, returns 200
+2. **Schema Validation:** Response matches Pydantic schema
+3. **Database Scenarios:** Connected and disconnected states
+4. **Error Handling:** Various database error types
+5. **OpenAPI Generation:** Schema properly documented
+6. **Performance:** Response time < 1 second
+
+**Mock Strategy:**
+- Mock `get_db` dependency at router level
+- Use `AsyncMock` for session.execute
+- Bind loop variables properly to avoid closure issues
+
+### Manual Testing
+
+```bash
+# Start development server
+make dev
+
+# Test health endpoint
+curl http://localhost:8000/health
+
+# Expected response (if DB is up):
+{
+  "status": "ok",
+  "version": "0.1.0",
+  "database": "connected"
+}
+
+# View OpenAPI docs
+open http://localhost:8000/docs
+
+# View OpenAPI spec
+curl http://localhost:8000/openapi.json | jq '.paths["/health"]'
+```
+
+### Frontend Type Generation
+
+After implementing health check, frontend can generate TypeScript types:
+
+```bash
+cd article-mind-ui
+npm run gen:api
+```
+
+This generates:
+
+```typescript
+// src/lib/api/generated.ts
+export interface HealthResponse {
+  status: "ok" | "degraded" | "error";
+  version: string;
+  database: "connected" | "disconnected";
+}
+```
+
+### Key Takeaways
+
+**For Future API Endpoints:**
+1. Always define Pydantic schema in `schemas/` first
+2. Use `response_model` decorator on all endpoints
+3. Document design decisions in docstrings
+4. Write comprehensive tests (8+ test cases)
+5. Add OpenAPI examples in schema and router
+6. Test with database mocking for failure scenarios
+7. Verify OpenAPI spec generation
+8. Follow the pattern established by `/health`
+
 ## Database Setup
 
 ### PostgreSQL Installation

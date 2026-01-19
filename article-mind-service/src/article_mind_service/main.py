@@ -9,6 +9,7 @@ from sqlalchemy import text
 
 from .config import settings
 from .database import engine
+from .routers import health_router
 
 
 @asynccontextmanager
@@ -17,14 +18,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Startup
     print(f"Starting {settings.app_name} v{settings.app_version}")
 
-    # Test database connection
+    # Test database connection (non-blocking - service can start without DB)
     try:
         async with engine.begin() as conn:
             await conn.execute(text("SELECT 1"))
         print("✅ Database connection verified")
     except Exception as e:
-        print(f"❌ Database connection failed: {e}")
-        raise
+        print(f"⚠️  Database connection failed: {e}")
+        print("⚠️  Service will start but /health will report degraded status")
 
     yield
 
@@ -50,6 +51,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+# Health check router (no prefix - as per API contract)
+app.include_router(health_router)
 
 
 @app.get("/")

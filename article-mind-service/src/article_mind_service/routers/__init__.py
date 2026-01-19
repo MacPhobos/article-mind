@@ -1,3 +1,7 @@
 """FastAPI routers for API endpoints."""
 
-__all__: list[str] = []
+from .health import router as health_router
+
+__all__ = [
+    "health_router",
+]
