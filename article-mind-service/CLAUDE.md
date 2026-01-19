@@ -739,6 +739,319 @@ async def get_users():
 - Frontend can migrate gradually
 - OpenAPI spec clearly shows version
 
+## Database Setup
+
+### PostgreSQL Installation
+
+The project uses PostgreSQL 16.x for local development. You have several installation options:
+
+#### Option A: System PostgreSQL (Recommended if already installed)
+
+Check if PostgreSQL is already running:
+
+```bash
+systemctl status postgresql
+# or
+pg_ctl status
+```
+
+If already installed, create the database and user:
+
+```bash
+psql postgres << 'EOF'
+CREATE USER article_mind WITH PASSWORD 'article_mind';
+CREATE DATABASE article_mind OWNER article_mind;
+GRANT ALL PRIVILEGES ON DATABASE article_mind TO article_mind;
+\q
+EOF
+```
+
+Verify connection:
+
+```bash
+PGPASSWORD=article_mind psql -U article_mind -d article_mind -c '\conninfo'
+```
+
+#### Option B: Docker (Recommended for isolation)
+
+Start PostgreSQL container:
+
+```bash
+docker run -d \
+  --name article-mind-postgres \
+  -e POSTGRES_USER=article_mind \
+  -e POSTGRES_PASSWORD=article_mind \
+  -e POSTGRES_DB=article_mind \
+  -p 5432:5432 \
+  -v article-mind-pgdata:/var/lib/postgresql/data \
+  postgres:16-alpine
+```
+
+Stop and remove container:
+
+```bash
+docker stop article-mind-postgres
+docker rm article-mind-postgres
+```
+
+Remove volume (deletes all data):
+
+```bash
+docker volume rm article-mind-pgdata
+```
+
+#### Option C: ASDF Version Manager
+
+```bash
+# Install PostgreSQL plugin
+asdf plugin add postgres
+
+# Install PostgreSQL 16.6
+asdf install postgres 16.6
+asdf local postgres 16.6
+
+# Initialize PostgreSQL data directory
+export PGDATA="$HOME/.asdf/installs/postgres/16.6/data"
+pg_ctl init -D "$PGDATA"
+
+# Start PostgreSQL
+pg_ctl start -D "$PGDATA" -l "$PGDATA/postgres.log"
+```
+
+### Database Connection
+
+Connection string format in `.env`:
+
+```env
+DATABASE_URL=postgresql://article_mind:article_mind@localhost:5432/article_mind
+```
+
+The `database.py` module automatically converts this to async format:
+
+```python
+# Automatically converted to:
+postgresql+asyncpg://article_mind:article_mind@localhost:5432/article_mind
+```
+
+### Testing Database Connection
+
+Run the test script:
+
+```bash
+uv run python scripts/test_db.py
+```
+
+Expected output:
+
+```
+✅ Database connection successful!
+PostgreSQL version: PostgreSQL 16.x on ...
+Test query result: 1 + 1 = 2
+```
+
+### Common Database Operations
+
+#### Connect to Database
+
+Using Docker:
+
+```bash
+docker exec -it article-mind-postgres psql -U article_mind -d article_mind
+```
+
+Using system PostgreSQL:
+
+```bash
+PGPASSWORD=article_mind psql -U article_mind -d article_mind -h localhost
+# or without password if using peer authentication
+psql -U article_mind -d article_mind
+```
+
+#### Useful psql Commands
+
+```bash
+\l          # List all databases
+\dt         # List all tables
+\d table    # Describe table schema
+\du         # List users/roles
+\conninfo   # Show connection info
+\q          # Quit psql
+```
+
+#### View Current Migration Status
+
+```bash
+uv run alembic current
+```
+
+#### View Migration History
+
+```bash
+uv run alembic history
+```
+
+### Troubleshooting
+
+#### Connection Refused
+
+**Symptom:** `connection to server on socket failed: Connection refused`
+
+**Solutions:**
+
+1. Check PostgreSQL is running:
+   ```bash
+   # Docker
+   docker ps | grep postgres
+
+   # System service
+   systemctl status postgresql
+
+   # ASDF
+   pg_ctl status -D "$PGDATA"
+   ```
+
+2. Verify port 5432 is not blocked:
+   ```bash
+   ss -tlnp | grep :5432
+   ```
+
+3. Check firewall settings
+
+#### Authentication Failed
+
+**Symptom:** `password authentication failed for user "article_mind"`
+
+**Solutions:**
+
+1. Verify credentials in `.env` match database user
+2. Check `pg_hba.conf` authentication method (should allow password or md5)
+3. For Docker, recreate container with correct environment variables:
+   ```bash
+   docker rm -f article-mind-postgres
+   docker run -d \
+     --name article-mind-postgres \
+     -e POSTGRES_USER=article_mind \
+     -e POSTGRES_PASSWORD=article_mind \
+     -e POSTGRES_DB=article_mind \
+     -p 5432:5432 \
+     postgres:16-alpine
+   ```
+
+#### Port Already in Use
+
+**Symptom:** `port 5432 is already allocated`
+
+**Solutions:**
+
+1. Find process using port 5432:
+   ```bash
+   lsof -i :5432
+   ```
+
+2. Stop conflicting service or use different port:
+   ```bash
+   # Docker with custom port
+   docker run -p 5433:5432 ... postgres:16-alpine
+
+   # Update .env
+   DATABASE_URL=postgresql://article_mind:article_mind@localhost:5433/article_mind
+   ```
+
+#### Migration Conflicts
+
+**Symptom:** Alembic migration errors or conflicts
+
+**Solutions:**
+
+1. Check current migration status:
+   ```bash
+   uv run alembic current
+   ```
+
+2. Rollback if needed:
+   ```bash
+   make migrate-down
+   ```
+
+3. Recreate migration:
+   ```bash
+   make migrate-create MSG="description"
+   make migrate
+   ```
+
+4. If Alembic is out of sync, you may need to stamp the database:
+   ```bash
+   # DANGEROUS: Only if you know what you're doing
+   uv run alembic stamp head
+   ```
+
+#### Alembic Can't Detect Models
+
+**Symptom:** `alembic revision --autogenerate` creates empty migration
+
+**Solutions:**
+
+1. Ensure models are imported in `models/__init__.py`:
+   ```python
+   from .user import User
+   from .article import Article
+
+   __all__ = ["User", "Article"]
+   ```
+
+2. Verify `alembic/env.py` imports models correctly
+3. Check `target_metadata = Base.metadata` is set in `alembic/env.py`
+
+#### Docker Volume Permissions
+
+**Symptom:** PostgreSQL container fails to start with permission errors
+
+**Solutions:**
+
+```bash
+# Remove volume and recreate
+docker volume rm article-mind-pgdata
+docker run -d ... postgres:16-alpine
+```
+
+### Production Considerations
+
+While not required for local development, keep these in mind for production:
+
+#### Connection Pooling
+
+Already configured in `database.py`. Adjust settings if needed:
+
+```python
+engine = create_async_engine(
+    database_url,
+    echo=settings.debug,
+    pool_size=20,          # Max connections in pool
+    max_overflow=10,       # Connections beyond pool_size
+    pool_timeout=30,       # Seconds to wait for connection
+    pool_recycle=3600,     # Recycle connections after 1 hour
+)
+```
+
+#### Database Backups
+
+Automated backups for production:
+
+```bash
+# Backup
+docker exec article-mind-postgres pg_dump -U article_mind article_mind > backup.sql
+
+# Restore
+docker exec -i article-mind-postgres psql -U article_mind article_mind < backup.sql
+```
+
+#### Read Replicas
+
+For production scaling:
+- Configure separate read-only connection for queries
+- Use write connection only for INSERT/UPDATE/DELETE
+- Implement connection routing based on operation type
+
 ## Development Workflow
 
 ### Daily Development Loop
