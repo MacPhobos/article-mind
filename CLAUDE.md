@@ -5,6 +5,54 @@ article-mind-service is a separate repo cloned into the article-mind-service/ di
 article-mind-ui is a separate repo cloned into the article-mind-ui/ directory.
 The purpose of this monorepo is to facilitate coordinated development of both the service and UI components of the Article Mind application.
 
+---
+
+## The Golden Rule: API Contract is FROZEN
+
+**Contract Location**: `docs/api-contract.md` exists in BOTH subprojects (must be identical for shared sections)
+
+- **Backend (Source of Truth)**: `article-mind-service/docs/api-contract.md`
+- **Frontend (Mirror)**: `article-mind-ui/docs/api-contract.md`
+
+### Contract Synchronization Workflow (ONE WAY ONLY)
+
+1. **Update backend contract**: Edit `article-mind-service/docs/api-contract.md`
+2. **Update backend models**: Update Pydantic schemas in `article-mind-service/src/article_mind_service/schemas/`
+3. **Run backend tests**: `cd article-mind-service && make test`
+4. **Copy contract to frontend**: `cp article-mind-service/docs/api-contract.md article-mind-ui/docs/`
+5. **Regenerate frontend types**: `cd article-mind-ui && make gen-api`
+6. **Update frontend code**: Use new generated types from `src/lib/api/generated.ts`
+7. **Run frontend tests**: `cd article-mind-ui && make test`
+
+**NEVER**:
+- Manually edit generated type files in the frontend (`src/lib/api/generated.ts`)
+- Change API without updating contract in BOTH repos
+- Deploy frontend without regenerating types after backend changes
+- Break backward compatibility without version bump
+
+### Contract Change Checklist
+
+- [ ] Update `article-mind-service/docs/api-contract.md`
+- [ ] Update backend Pydantic schemas
+- [ ] Backend tests pass (`make test`)
+- [ ] Copy contract to `article-mind-ui/docs/api-contract.md`
+- [ ] Regenerate types (`cd article-mind-ui && make gen-api`)
+- [ ] Update frontend code using new types
+- [ ] Frontend tests pass (`make test`)
+- [ ] Bump version in contract changelog if breaking change
+
+### Quick Reference
+
+| Resource | Location |
+|----------|----------|
+| Backend API Contract | `article-mind-service/docs/api-contract.md` |
+| Frontend API Contract | `article-mind-ui/docs/api-contract.md` |
+| Backend OpenAPI Spec | http://localhost:8000/openapi.json |
+| Backend Swagger UI | http://localhost:8000/docs |
+| Generated TS Types | `article-mind-ui/src/lib/api/generated.ts` |
+
+---
+
 # Project Memory Configuration
 
 This project uses KuzuMemory for intelligent context management.
