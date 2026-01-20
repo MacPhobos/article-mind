@@ -47,8 +47,8 @@ The purpose of this monorepo is to facilitate coordinated development of both th
 |----------|----------|
 | Backend API Contract | `article-mind-service/docs/api-contract.md` |
 | Frontend API Contract | `article-mind-ui/docs/api-contract.md` |
-| Backend OpenAPI Spec | http://localhost:8000/openapi.json |
-| Backend Swagger UI | http://localhost:8000/docs |
+| Backend OpenAPI Spec | http://localhost:13010/openapi.json |
+| Backend Swagger UI | http://localhost:13010/docs |
 | Generated TS Types | `article-mind-ui/src/lib/api/generated.ts` |
 
 ---
